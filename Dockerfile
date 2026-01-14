@@ -1,5 +1,6 @@
-# RunPod Serverless Worker - LLaVA-NeXT-Video Frame Descriptions
+# RunPod Serverless Worker - LLaVA-NeXT v1.6 Frame Descriptions
 # Base image with CUDA support
+# Build trigger: 2026-01-13 20:11
 FROM runpod/pytorch:2.1.0-py3.10-cuda11.8.0-devel-ubuntu22.04
 
 # Set working directory
