@@ -1,0 +1,19 @@
+# RunPod serverless SDK
+runpod==1.6.2
+
+# Transformers and model dependencies
+transformers==4.37.0
+torch==2.1.0
+torchvision==0.16.0
+
+# Image processing
+Pillow==10.2.0
+
+# HTTP requests
+requests==2.31.0
+
+# Accelerate for model loading optimization
+accelerate==0.26.1
+
+# For faster inference (optional but recommended)
+bitsandbytes==0.42.0
