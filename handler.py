@@ -1,6 +1,7 @@
 """
-RunPod Serverless Handler for LLaVA-NeXT-Video Frame Descriptions
+RunPod Serverless Handler for LLaVA-NeXT v1.6 Frame Descriptions
 Generates production-focused visual descriptions for video frames
+Updated: 2026-01-13 22:05 - transformers 4.45.0
 """
 
 import runpod
