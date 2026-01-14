@@ -1,8 +1,8 @@
 # RunPod serverless SDK
 runpod==1.6.2
 
-# Transformers (LLaVA-NeXT v1.6 requires >= 4.40.0)
-transformers==4.40.0
+# Transformers (LLaVA-NeXT v1.6 with image_token support)
+transformers==4.45.0
 
 # Image processing
 Pillow==10.2.0
