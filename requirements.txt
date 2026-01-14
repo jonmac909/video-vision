@@ -1,8 +1,8 @@
 # RunPod serverless SDK
 runpod==1.6.2
 
-# Transformers (compatible with PyTorch 2.1.0 in base image)
-transformers==4.37.0
+# Transformers (LLaVA-NeXT v1.6 requires >= 4.40.0)
+transformers==4.40.0
 
 # Image processing
 Pillow==10.2.0
