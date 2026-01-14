@@ -1,6 +1,6 @@
-# LLaVA-NeXT-Video RunPod Worker
+# LLaVA-NeXT RunPod Worker
 
-RunPod serverless worker for generating production-focused visual descriptions of video frames using [LLaVA-NeXT-Video](https://github.com/LLaVA-VL/LLaVA-NeXT).
+RunPod serverless worker for generating production-focused visual descriptions of video frames using [LLaVA-NeXT v1.6](https://huggingface.co/llava-hf/llava-v1.6-mistral-7b-hf).
 
 ## Overview
 
@@ -16,10 +16,11 @@ This worker analyzes video frames and generates detailed descriptions of visual 
 
 ## Model
 
-- **Model**: `llava-hf/LLaVA-NeXT-Video-7B-hf`
-- **Architecture**: Vision-language model with temporal understanding
+- **Model**: `llava-hf/llava-v1.6-mistral-7b-hf` (LLaVA-NeXT v1.6)
+- **Base**: Mistral-7B with vision encoder
+- **Architecture**: Multimodal vision-language model
 - **Size**: 7B parameters
-- **Hardware**: RTX 4090 (8GB VRAM minimum)
+- **Hardware**: RTX 4090 (24GB VRAM) or RTX 3090 (24GB VRAM)
 - **Inference Speed**: ~1-2 seconds per frame
 
 ## API Interface

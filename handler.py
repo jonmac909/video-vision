@@ -5,7 +5,7 @@ Generates production-focused visual descriptions for video frames
 
 import runpod
 import torch
-from transformers import LlavaNextVideoProcessor, LlavaNextVideoForConditionalGeneration
+from transformers import LlavaNextProcessor, LlavaNextForConditionalGeneration
 from PIL import Image
 import requests
 from io import BytesIO
@@ -15,15 +15,17 @@ import logging
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
-# Load LLaVA-NeXT-Video model on cold start
-logger.info("Loading LLaVA-NeXT-Video model...")
-MODEL_ID = "llava-hf/LLaVA-NeXT-Video-7B-hf"
+# Load LLaVA-NeXT model on cold start
+logger.info("Loading LLaVA-NeXT model...")
+# Using LLaVA-NeXT v1.6 (Mistral-7B base) - proven model with strong vision capabilities
+MODEL_ID = "llava-hf/llava-v1.6-mistral-7b-hf"
 
-processor = LlavaNextVideoProcessor.from_pretrained(MODEL_ID)
-model = LlavaNextVideoForConditionalGeneration.from_pretrained(
+processor = LlavaNextProcessor.from_pretrained(MODEL_ID)
+model = LlavaNextForConditionalGeneration.from_pretrained(
     MODEL_ID,
     torch_dtype=torch.float16,
-    device_map="auto"
+    device_map="auto",
+    low_cpu_mem_usage=True
 )
 logger.info("Model loaded successfully")
 
@@ -57,36 +59,42 @@ def download_image(url: str) -> Image.Image:
 def describe_frame(image: Image.Image) -> str:
     """Generate production description for a single frame"""
     try:
-        # Prepare conversation format (LLaVA expects chat format)
+        # LLaVA-NeXT v1.6 uses chat format with specific structure
         conversation = [
             {
                 "role": "user",
                 "content": [
-                    {"type": "text", "text": PRODUCTION_PROMPT},
                     {"type": "image"},
+                    {"type": "text", "text": PRODUCTION_PROMPT},
                 ],
             },
         ]
 
-        # Apply chat template
+        # Apply chat template and process
         prompt = processor.apply_chat_template(conversation, add_generation_prompt=True)
-
-        # Process inputs
         inputs = processor(images=image, text=prompt, return_tensors="pt").to(model.device)
 
-        # Generate description
+        # Generate description with reasonable limits
         output = model.generate(
             **inputs,
             max_new_tokens=256,
-            do_sample=False,  # Deterministic for consistency
+            do_sample=False,  # Deterministic
+            temperature=None,  # Not used when do_sample=False
         )
 
-        # Decode output
+        # Decode and extract response
         description = processor.decode(output[0], skip_special_tokens=True)
 
-        # Extract only the assistant's response (after the prompt)
-        if "ASSISTANT:" in description:
-            description = description.split("ASSISTANT:")[-1].strip()
+        # Extract assistant response (LLaVA-NeXT format)
+        # Try multiple split patterns
+        for pattern in ["[/INST]", "ASSISTANT:", "Assistant:"]:
+            if pattern in description:
+                description = description.split(pattern)[-1].strip()
+                break
+
+        # Remove the prompt if it leaked through
+        if PRODUCTION_PROMPT in description:
+            description = description.replace(PRODUCTION_PROMPT, "").strip()
 
         return description
 
