@@ -1,7 +1,7 @@
 """
 RunPod Serverless Handler for LLaVA-NeXT v1.6 Frame Descriptions
 Generates production-focused visual descriptions for video frames
-Updated: 2026-01-13 22:05 - transformers 4.45.0
+Updated: 2026-01-14 - Added base64 support to eliminate network I/O
 """
 
 import runpod
@@ -10,6 +10,7 @@ from transformers import LlavaNextProcessor, LlavaNextForConditionalGeneration
 from PIL import Image
 import requests
 from io import BytesIO
+import base64
 import logging
 
 # Setup logging
@@ -54,6 +55,17 @@ def download_image(url: str) -> Image.Image:
         return image.convert('RGB')
     except Exception as e:
         logger.error(f"Failed to download image from {url}: {e}")
+        raise
+
+
+def decode_base64_image(base64_str: str) -> Image.Image:
+    """Decode base64 image data to PIL Image (eliminates network I/O)"""
+    try:
+        image_data = base64.b64decode(base64_str)
+        image = Image.open(BytesIO(image_data))
+        return image.convert('RGB')
+    except Exception as e:
+        logger.error(f"Failed to decode base64 image: {e}")
         raise
 
 
@@ -104,14 +116,73 @@ def describe_frame(image: Image.Image) -> str:
         return f"Error generating description: {str(e)}"
 
 
+def describe_frames_batch(images: list[Image.Image]) -> list[str]:
+    """Generate production descriptions for multiple frames in a single batch"""
+    try:
+        # Prepare batch inputs
+        conversations = []
+        for _ in images:
+            conversations.append([
+                {
+                    "role": "user",
+                    "content": [
+                        {"type": "image"},
+                        {"type": "text", "text": PRODUCTION_PROMPT},
+                    ],
+                },
+            ])
+
+        # Process all images in batch
+        prompts = [processor.apply_chat_template(conv, add_generation_prompt=True) for conv in conversations]
+        inputs = processor(images=images, text=prompts, padding=True, return_tensors="pt").to(model.device)
+
+        # Generate descriptions for all frames at once
+        outputs = model.generate(
+            **inputs,
+            max_new_tokens=256,
+            do_sample=False,
+        )
+
+        # Decode all outputs
+        descriptions = []
+        for output in outputs:
+            description = processor.decode(output, skip_special_tokens=True)
+
+            # Extract assistant response
+            for pattern in ["[/INST]", "ASSISTANT:", "Assistant:"]:
+                if pattern in description:
+                    description = description.split(pattern)[-1].strip()
+                    break
+
+            # Remove prompt if leaked
+            if PRODUCTION_PROMPT in description:
+                description = description.replace(PRODUCTION_PROMPT, "").strip()
+
+            descriptions.append(description)
+
+        return descriptions
+
+    except Exception as e:
+        logger.error(f"Batch description failed: {e}")
+        return [f"Error: {str(e)}" for _ in images]
+
+
 def handler(event):
     """
     RunPod handler function
 
-    Input format:
+    Input format (URL mode):
     {
         "input": {
             "frame_urls": ["https://...", "https://..."]
+        }
+    }
+
+    Input format (base64 mode - faster, no network I/O):
+    {
+        "input": {
+            "frame_data": ["base64_string1", "base64_string2", ...],
+            "format": "base64"
         }
     }
 
@@ -124,30 +195,63 @@ def handler(event):
     try:
         job_input = event["input"]
         frame_urls = job_input.get("frame_urls", [])
+        frame_data = job_input.get("frame_data", [])
+        format_type = job_input.get("format", "url")
 
-        if not frame_urls:
-            return {"error": "No frame_urls provided"}
+        # Validate input
+        if format_type == "base64":
+            if not frame_data:
+                return {"error": "No frame_data provided for base64 mode"}
+            logger.info(f"Processing {len(frame_data)} frames in base64 mode (no network I/O)")
+        else:
+            if not frame_urls:
+                return {"error": "No frame_urls provided"}
+            logger.info(f"Processing {len(frame_urls)} frames in URL mode")
 
-        logger.info(f"Processing {len(frame_urls)} frames")
-
-        descriptions = []
+        # Load images based on format
+        images = []
         failed_indices = []
 
-        for idx, url in enumerate(frame_urls):
-            try:
-                # Download image
-                image = download_image(url)
+        if format_type == "base64":
+            # Decode base64 data directly (NO network I/O)
+            for idx, data in enumerate(frame_data):
+                try:
+                    image = decode_base64_image(data)
+                    images.append(image)
+                except Exception as e:
+                    logger.error(f"Frame {idx + 1}/{len(frame_data)}: Base64 decode failed - {e}")
+                    images.append(None)
+                    failed_indices.append(idx)
+        else:
+            # Download from URLs (existing behavior)
+            for idx, url in enumerate(frame_urls):
+                try:
+                    image = download_image(url)
+                    images.append(image)
+                except Exception as e:
+                    logger.error(f"Frame {idx + 1}/{len(frame_urls)}: Download failed - {e}")
+                    images.append(None)
+                    failed_indices.append(idx)
 
-                # Generate description
-                description = describe_frame(image)
-                descriptions.append(description)
+        # Process all valid images in a single batch
+        valid_images = [img for img in images if img is not None]
+        if valid_images:
+            logger.info(f"Running batch inference on {len(valid_images)} frames")
+            batch_descriptions = describe_frames_batch(valid_images)
+        else:
+            batch_descriptions = []
 
-                logger.info(f"Frame {idx + 1}/{len(frame_urls)}: Success")
+        # Merge results with failed frames
+        descriptions = []
+        valid_idx = 0
+        for idx, img in enumerate(images):
+            if img is None:
+                descriptions.append("Failed to download frame")
+            else:
+                descriptions.append(batch_descriptions[valid_idx])
+                valid_idx += 1
 
-            except Exception as e:
-                logger.error(f"Frame {idx + 1}/{len(frame_urls)}: Failed - {e}")
-                descriptions.append(f"Failed to process frame")
-                failed_indices.append(idx)
+        logger.info(f"Batch complete: {len(descriptions)} descriptions, {len(failed_indices)} failed")
 
         return {
             "descriptions": descriptions,
