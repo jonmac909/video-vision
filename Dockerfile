@@ -19,14 +19,8 @@ RUN pip install --no-cache-dir -r requirements.txt
 # Copy handler script
 COPY handler.py .
 
-# Download model weights on build (caches in image)
-# This prevents cold start delays
-RUN python -c "from transformers import LlavaNextProcessor, LlavaNextForConditionalGeneration; \
-    MODEL_ID='llava-hf/llava-v1.6-mistral-7b-hf'; \
-    print('Downloading model weights...'); \
-    LlavaNextProcessor.from_pretrained(MODEL_ID); \
-    LlavaNextForConditionalGeneration.from_pretrained(MODEL_ID, low_cpu_mem_usage=True); \
-    print('Model weights cached successfully')"
+# Model weights will download on first worker startup (~14GB, ~2-3 minutes)
+# RunPod caches downloaded models across worker restarts
 
 # Set RunPod handler
 CMD ["python", "-u", "handler.py"]
